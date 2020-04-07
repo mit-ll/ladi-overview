@@ -12,6 +12,10 @@ Computer vision capabilities have rapidly been advancing and are expected to bec
 		- [Preliminary Conclusions Based on End-User Outreach](#preliminary-conclusions-based-on-end-user-outreach)
 		- [How CAP Collected the Imagery](#how-cap-collected-the-imagery)
 	- [Dataset Access](#dataset-access)
+		- [Dataset Organization](#dataset-organization)
+		- [Metadata and Annotation Database](#metadata-and-annotation-database)
+		- [Additional Details](#additional-details)
+		- [YAML Tags](#yaml-tags)
 	- [Dataset Annotations](#dataset-annotations)
 		- [Selecting Labels in Partnership with Public Safety](#selecting-labels-in-partnership-with-public-safety)
 		- [Hierarchical Labeling Scheme](#hierarchical-labeling-scheme)
@@ -20,11 +24,6 @@ Computer vision capabilities have rapidly been advancing and are expected to bec
 		- [Benchmark Machine Annotations](#benchmark-machine-annotations)
 		- [Metadata](#metadata)
 		- [Machine Learning as a Service](#machine-learning-as-a-service)
-	- [Dataset Organization](#dataset-organization)
-		- [Raw Archival](#raw-archival)
-		- [HDF5 Structure and Serialization](#hdf5-structure-and-serialization)
-		- [Metadata and Annotation Database](#metadata-and-annotation-database)
-		- [YAML Tags](#yaml-tags)
 	- [Dataset Scope](#dataset-scope)
 	- [Dataset Use](#dataset-use)
 		- [Motivation](#motivation)
@@ -32,6 +31,7 @@ Computer vision capabilities have rapidly been advancing and are expected to bec
 			- [Scene Description and Indexing](#scene-description-and-indexing)
 			- [Geo-Localization and Object Detection](#geo-localization-and-object-detection)
 			- [Cross-View and Heterogenous Observations](#cross-view-and-heterogenous-observations)
+		- [Disaster Scene Description and Indexing](#disaster-scene-description-and-indexing)
 	- [Task Resources](#task-resources)
 		- [Task Coordinators](#task-coordinators)
 		- [System Task](#system-task)
@@ -66,6 +66,7 @@ Computer vision capabilities have rapidly been advancing and are expected to bec
 			- [Do the images share a common lens projection? Do I need to reproject images?](#do-the-images-share-a-common-lens-projection-do-i-need-to-reproject-images)
 			- [Were any of the images collected using drones?](#were-any-of-the-images-collected-using-drones)
 	- [Related Content](#related-content)
+	- [Citation](#citation)
 	- [Distribution Statement](#distribution-statement)
 
 ## Point of Contact
@@ -222,6 +223,101 @@ aws s3 sync s3://ladi/ path/to/local
 ```
 where `path/to/local` again represents the local path where the files will be written.
 
+### Dataset Organization
+There are two top-level directories of the LADI dataset:
+- Images: contains the raw images
+- Labels: contains files with metadata and labels for images in the LADI dataset
+	- We include multiple file formats for the same file: items with the same name but different extensions just represent different formats of the same information. You only need the version that is useful for you. 
+	- `.pgsql` is a postgresql binary database export, which can be convenient for making queries
+	- `.tsv` and `.csv` are tab-separated and comma-separated text files, respectively, and should be compatible with most programs
+
+Within the Labels directory, there are a number of files, described below:
+- `ladi_images_metadata` file lists all of the metadata of the FEMA_CAP files in LADI. Fields are:
+	- `uuid` – unique ID for each image, constructed from the sha1 hash of the binary image file
+	- `timestamp` – local time of when the image was taken
+	- `gps_lat`, `gps_lon`, `gps_alt` – GPS latitude, longitude, and altitude of where the image was taken. lat/lon is in decimal degrees, altitude is in meters above sea level
+	- `file_size` – size of the image file, in bytes
+	- `width`, `height` – dimensions of the image, in pixels
+	- `s3_path` – the location of the file in the s3 locator format
+	- `url` – the location of the file in http url format
+- `ladi_machine_labels` file provides machine-generated labels for each image. Fields are:
+	- `id`: an index column, row number of database for label
+	- `image_uuid` – the unique image id that this label corresponds to - foreign key to ladi_images_metadata's uuid
+	- `label_source` – name of the algorithm or service which automatically generated this label. Options and references are:
+		- GCV-label-annotation https://cloud.google.com/vision 
+		- GCV-web-entity https://cloud.google.com/vision/docs/detecting-web/ 
+		- ImageNet https://keras.io/applications/#inceptionresnetv2 
+		- places365 https://github.com/CSAILVision/places365 
+	- `label_text` – the name of the label that is attributed to the image
+	- `weight` – a numerical score indicating relative confidence in the label
+		- note that the score is not normalized across label sources, therefore, it is not valid to compare the weights from different label sources to one another
+		- In addition, the GCV-web-entity weights should not be used to compare scores between different label_texts, since their score is not normalized between different labels
+- `ladi_aggregated_responses` file provides human annotations of images in the LADI `FEMA_CAP` dataset. Note that each row corresponds to one worker’s annotation of one image. Each image may have multiple annotations from multiple workers. It is up to you to parse and interpret the raw responses. Fields are:
+	- `img_url` – http url of the image file in ladi: can be used to join against the `url` column of `ladi_images_metadata`
+	- `WorkerId` – anonymized numerical ID for each worker
+	- `Answer` – list of labels that the worker said applied to the image. Labels are formatted in the form `category:subcategory`. For example `damage:flood/water`. Note that there may be multiple labels for a given category in a single response.
+
+### Metadata and Annotation Database
+
+The annotations and metadata for the data are available as records in a [PostgreSQL](https://www.postgresql.org/) relational database. This database provides a searchable index to locate data of interest, e.g. to identify the subset of images from a specific event or location. PostgreSQL instances can be managed in the cloud or locally, here are a few (but not comprehensive) options:
+
+- [Amazon RDS for PostgreSQL](https://aws.amazon.com/rds/postgresql/)
+- [Google Cloud SQL for PostgreSQL](https://cloud.google.com/sql/docs/postgres/)
+- [IBM Databases for PostgreSQL](https://cloud.ibm.com/catalog/services/databases-for-postgresql)
+- [Microsoft Azure Database for PostgreSQL](https://azure.microsoft.com/en-us/services/postgresql/)
+- [PostgreSQL Core Distribution](https://www.postgresql.org/download/)
+- [ScaleGrid PostgreSQL Hosting](https://scalegrid.io/postgresql.html)
+
+### Additional Details
+An early version of LADI was presented at IEEE HPEC 2019. For additional details, check out the article on [arXiv](https://arxiv.org/abs/1908.09006)
+
+<details> <summary> J. Liu, D. Strohschein, S. Samsi and A. Weinert, "Large Scale Organization and Inference of an Imagery Dataset for Public Safety," 2019 IEEE High Performance Extreme Computing Conference (HPEC), Waltham, MA, USA, 2019, pp. 1-6. doi: 10.1109 HPEC.2019.8916437</summary>
+<p>
+
+```tex
+@inproceedings{liuLargeScale2019,
+author={J. {Liu} and D. {Strohschein} and S. {Samsi} and A. {Weinert}},
+booktitle={2019 IEEE High Performance Extreme Computing Conference (HPEC)},
+title={Large Scale Organization and Inference of an Imagery Dataset for Public Safety},
+year={2019},
+volume={},
+number={},
+pages={1-6},
+keywords={Safety;Metadata;Organizations;Servers;Computer architecture;Program processors;Broadband communication;big data;indexing;inference;public safety;video},
+doi={10.1109/HPEC.2019.8916437},
+ISSN={2377-6943},
+month={Sep.},}
+```
+</p>
+</details>
+
+### YAML Tags
+
+As part of the technology transfer to the AWS Public Dataset Program, we created a YAML file. [YAML](https://yaml.org/) is a human-readable data-serialization language. It is commonly used for configuration files and in applications where data is being stored or transmitted. Based on the set of [Registry of Open Data on AWS approved tags](https://github.com/awslabs/open-data-registry/blob/master/tags.yaml), we tagged the LADI dataset with the following:
+
+- aws-pds
+- aerial imagery
+- coastal
+- computer vision
+- disaster response
+- earth observation
+- earthquakes
+- geospatial
+- imaging
+- image processing
+- infrastructure
+- land
+- machine learning
+- mapping
+- natural resource
+- seismology
+- transportation
+- urban
+- water
+
+This tags reflect that the LADI datasets consists of aerial imagery with a wide range of features. It includes disaster related tags such as earthquakes and seismology, manmade tags such as infrastructure and urban, and different geological features such as coastal and land.
+
+
 ## Dataset Annotations
 
 A label set is the list and type of annotations labeled within the dataset. Defining this is a critical part of any dataset effort. We needed to define a label set that is representative of features of interest to public safety during a disaster response while balancing with common features to enable reasonable capabilities trained using this dataset. The label set was informed by constrained and open engagement with the public safety community and a review of technical labels commonly in remote sensing. We were also less concerned with potentially rare labels because they may increase in frequency as CAP continues to operate and provide new data. Including potentially rare labels also communicates to the computer vision community what is important to public safety.
@@ -268,7 +364,7 @@ Here are examples of unannotated imagery collected by CAP and hosted by FEMA. No
 | Debris        | Flooding      | Damage     |
 | ------------- | ------------- | ------------- |
 | <img src="https://s3.amazonaws.com/fema-cap-imagery/Images/9068/614055/DJI_0017_1444d71c-525c-44c4-ad1f-2199f3f070f7.jpg" width="300">  | <img src="https://s3.amazonaws.com/fema-cap-imagery/Images/9120/615626/IMG_2019_a64dc7a7-0f92-4f02-938f-33e4cdc5826d.jpg" width="300">  | <img src="https://s3.amazonaws.com/fema-cap-imagery/Images/9075/614140/A0069_AP_e4cdf881-c8d9-4fd3-81c8-d6ce9a3e6364.jpg" width="300"> |
-| <img src="https://s3.amazonaws.com/fema-cap-imagery/Images/9080/614276/DJI_0022_1e920dcc-84e4-41d3-91fa-04954208c168.jpg" width="300">   | <img src="https://fema-cap-imagery.s3.amazonaws.com/Images/9096/615037/DSC_0007_a956a88f-c659-4db7-933e-c37a2df95211.jpg" width="300">  | <img src="https://s3.amazonaws.com/fema-cap-imagery/Images/9075/614140/A0069_AP_fb6edbd1-420f-46bd-8781-bb1e165c6781.jpg" width="300"> |
+| <img src="https://s3.amazonaws.com/fema-cap-imagery/Images/9080/614276/DJI_0022_1e920dcc-84e4-41d3-91fa-04954208c168.jpg" width="300">   | <img src="https://fema-cap-imagery.s3.amazonaws.com/Images/9096/615037/DSC_0007_a956a88f-c659-4db7-933e-c37a2df95211.jpg" width="300">  | <img src="http://s3.amazonaws.com/fema-cap-imagery/Images/9075/613999/A0013Vb0_62c7fe4a-17a0-453c-8dca-27ac9d14ea02.jpg" width="300"> |
 
 ### Crowdsourced Human Annotations
 
@@ -297,8 +393,8 @@ As part of the datasset, we extract and process the metadata and [Exif](https://
 
 | Type        | Source      | Field     | Description |
 | ------------- | ------------- | ------------- | ------------- |
-| METADATA | File | fieldpath | path to file location in filesystem |
-| METADATA | File | HDF5 | location of file in HDF5 |
+| METADATA | File | url | http url to image |
+| METADATA | File | s3_path | location of image in s3 URI format|
 | METADATA | File | filesize | size in bytes |
 | METADATA | EXIF | ImageHeight | height of image in pixels |
 | METADATA | EXIF | ImageWidth | width of image in pixels |
@@ -320,85 +416,6 @@ The annotations are designed to easily be leveraged by machine learning service 
 Since the LADI dataset version 1.0 was trained using the Amazon MTurk service, we worked with Amazon SageMaker team, as a representative system, to verify that the LADI annotations can work with a machine learning service. You can learn more about these services via this technical deep dive series:
 
 [![Amazon SageMaker Technical Deep Dive Series](images/thumbnail-sagemaker.jpg)](https://www.youtube.com/playlist?list=PLhr1KZpdzukcOr_6j_zmSrvYnLUtgqsZz "YouTube: Amazon SageMaker Technical Deep Dive Series")
-
-## Dataset Organization
-
-This section describes the dataset is organized. This organization approach has been peer-reviewed and presented to the academic community. Please use this citation when referencing it. A preprint is available on arXiv.
-
-<details> <summary> J. Liu, D. Strohschein, S. Samsi and A. Weinert, "Large Scale Organization and Inference of an Imagery Dataset for Public Safety," 2019 IEEE High Performance Extreme Computing Conference (HPEC), Waltham, MA, USA, 2019, pp. 1-6. doi: 10.1109 HPEC.2019.8916437</summary>
-<p>
-
-```tex
-@inproceedings{liuLargeScale2019,
-author={J. {Liu} and D. {Strohschein} and S. {Samsi} and A. {Weinert}},
-booktitle={2019 IEEE High Performance Extreme Computing Conference (HPEC)},
-title={Large Scale Organization and Inference of an Imagery Dataset for Public Safety},
-year={2019},
-volume={},
-number={},
-pages={1-6},
-keywords={Safety;Metadata;Organizations;Servers;Computer architecture;Program processors;Broadband communication;big data;indexing;inference;public safety;video},
-doi={10.1109/HPEC.2019.8916437},
-ISSN={2377-6943},
-month={Sep.},}
-```
-</p>
-</details>
-
-### Raw Archival
-
-The unannotated source images were archived as multiple tar files, each 4.5 GB large. The source images can also be accessed via the [FEMA S3](http://fema-cap-imagery.s3-website-us-east-1.amazonaws.com/Images/), however there may be duplicate images at the source.
-
-### HDF5 Structure and Serialization
-
-HDF5 is a generic format where each file is an independent storage “chunk”. Similar to a Linux file structure, data is organized in a directory structure that mirrors the original file structure from which the files were copied. Instead of adopting the data organization used by the [FEMA S3](http://fema-cap-imagery.s3-website-us-east-1.amazonaws.com/Images/), we organize data temporally by calendar month. Within each chunk are the associated metadata and annoations.
-
-![HDF5 chunks](images/image-hdf5-chunks.png)
-
-<!--  ![HDF5 store](images/image-hdf5-store.png) -->
-
-### Metadata and Annotation Database
-
-The annotations and metadata for the data are stored as records in a [PostgreSQL](https://www.postgresql.org/) relational database. This database provides a searchable index to locate data of interest, e.g. to identify the subset of images from a specific event or location. PostgreSQL instances can be managed in the cloud or locally, here are a few (but not comprehensive) options:
-
-- [Amazon RDS for PostgreSQL](https://aws.amazon.com/rds/postgresql/)
-- [Google Cloud SQL for PostgreSQL](https://cloud.google.com/sql/docs/postgres/)
-- [IBM Databases for PostgreSQL](https://cloud.ibm.com/catalog/services/databases-for-postgresql)
-- [Microsoft Azure Database for PostgreSQL](https://azure.microsoft.com/en-us/services/postgresql/)
-- [PostgreSQL Core Distribution](https://www.postgresql.org/download/)
-- [ScaleGrid PostgreSQL Hosting](https://scalegrid.io/postgresql.html)
-
-Once you've access the database, you can interface it as you would any SQL database. This includes [interrogating a table](https://www.postgresql.org/docs/9.4/tutorial-select.html), using [queries](https://www.postgresql.org/docs/9.4/queries.html) and [indexes](https://www.postgresql.org/docs/9.4/indexes.html.). Specifically, the database is organized similar to [associative arrays](https://en.wikipedia.org/wiki/Associative_array) where:
-
-- Rows are indexed by SHA1 hash (index-by-content rather than by name/location)
-- Columns with hierarchical structure: Type | Source | Field
-- Entries of associative array hold the values
-
-### YAML Tags
-
-As part of the technology transfer to the AWS Public Dataset Program, we created a YAML file. [YAML](https://yaml.org/) is a human-readable data-serialization language. It is commonly used for configuration files and in applications where data is being stored or transmitted. Based on the set of [Registry of Open Data on AWS approved tags](https://github.com/awslabs/open-data-registry/blob/master/tags.yaml), we tagged the LADI dataset with the following:
-
-- aws-pds
-- aerial imagery
-- coastal
-- computer vision
-- disaster response
-- earth observation
-- earthquakes
-- geospatial
-- imaging
-- image processing
-- infrastructure
-- land
-- machine learning
-- mapping
-- natural resource
-- seismology
-- transportation
-- urban
-- water
-
-This tags reflect that the LADI datasets consists of aerial imagery with a wide range of features. It includes disaster related tags such as earthquakes and seismology, manmade tags such as infrastructure and urban, and different geological features such as coastal and land.
 
 ## Dataset Scope
 
@@ -520,6 +537,10 @@ This task can be extended to support specific object detection. As shown by [Neu
 
 The most challenging task is a further extension of the previoust tasks. This problem seeks to determine if multiple images, each with a different perspective (i.e. ground-based, airborne, overhead satellite), either have the same features of interest in view (i.e. Eiffel tower, the same city intersection, a portion of coastline, etc.). This is important for the dataset, as the images’ metadata includes the geospatial coordinates of where the image was taken, not what the image is looking at. Most of the images also lack pointing metadata. In response, this dataset can be used to develop capabilities for three different localization types: (1) ground footprint of images as GIS polygons; (2) point estimate of primary feature of interest in image; and (3) GIS polygon of a region that contains the image’s contents. The ground footprint will be estimated using cross-view localization techniques using features from auxiliary datasets, including satellite and other imagery. The cross-view localization will be treated as a computer vision correspondence problem, using visual features from the CAP imagery cross referenced against geo-registered satellite imagery.
 
+### Disaster Scene Description and Indexing
+
+Based on the [proposed Tasks](#proposed-tasks), the NIST TREC Video Retrieval Evaluation (TRECVID) 2020 challenege has introduced the [Disaster Scene Description and Indexing (DSDI)](https://www-nlpir.nist.gov/projects/tv2020/dsdi.html) task. The initial 2020 task will focus on building a community of interest and generating a baseline performance to support future challenges and developments. The task scope focuses on the unique [disaster related features]((#dataset-annotations)) of the LADI dataset.
+
 ## Task Resources
 
 Given the high level [Proposed Tasks](#proposed-tasks), we provide recommendations on how to conduct a computer vision challenge to promote the desired development.
@@ -550,7 +571,7 @@ For 2020, development should be based on the LADI dataset hosted as part of the 
 
 #### Testing Dataset
 
-Annotated extracted frames from the video data files to accompany [USGS OFR 2015-1142--Assessment of existing and potential landslide hazards resulting from the April 25, 2015 Gorkha, Nepal earthquake sequence](http://dx.doi.org/10.5066/F7X928BN). Testing can either be conducted on individual frames and treated like static images or as video clips. While there are over ten hours of video, as of 2019, the entire corpus has not been annotated by the LADI team.
+Testing can either be conducted on individual frames and treated like static images or as video clips.
 
 #### Auxiliary Resources
 
@@ -563,9 +584,11 @@ Auxiliary resources include the datasets used for the [Benchmark Machine Annotat
 
 ##### Infrastructure
 
-- [National Inventory of Dams](https://nid.sec.usace.army.mil/)
 - [National Bridge Inventory](https://www.fhwa.dot.gov/bridge/nbi.cfm)
+- [National Inventory of Dams](https://nid.sec.usace.army.mil/)
+- [Natural Earth 1:10m Cultural Vectors](https://www.naturalearthdata.com/downloads/10m-cultural-vectors/)
 - [OpenStreetMap](https://www.openstreetmap.org/about)
+- [U.S. Wind Turbine Database](https://eerscmap.usgs.gov/uswtdb/)
 
 ##### Satellite / Overhead Imagery
 
@@ -618,7 +641,7 @@ We recommend each team may submit a maximum of 4 prioritized runs, per submissio
 
 These FAQs concern data access and use.
 
-#### How is this different than the CAP imagery hosted on the [FEMA CAP Browser](https://disasters.geoplatform.gov/imagerybrowser/?webmap=2c7dabb4a0594861a8bac3944b931d2d) or on the [FEMA S3](http://fema-cap-imagery.s3-website-us-east-1.amazonaws.com/Images/)? 
+#### How is this different than the CAP imagery hosted on the FEMA CAP Browser or on the FEMA S3? 
 
 FEMA is hosting the raw unannotated imagery and the LADI dataset is sourced from this imagery. The FEMA CAP browser website states that the data access is "Public: This dataset is intended for public access and use." As part of LADI, we remove duplicate images and organize the data to facilitate more efficient processing of it. The FEMA hosted data also do not include the human or machine generated annotations of the LADI dataset. The FEMA CAP Browser also only provides the most recent imagery, not all imagery is accessible via it's interface.
 
@@ -676,7 +699,31 @@ Yes, some images were collected by drones. However as of 2019, an overwhelemly m
 - [MIT Technology Review Article on the LADI Dataset](https://www.technologyreview.com/s/614246/ai-image-recognition-improves-disaster-response/)
 - [NIST Overview of the Imagery Dataset for Public Safety](https://www.nist.gov/ctl/pscr/imagery-dataset-public-safety)
 - [ResearchGate Project for the PSIAP dataset](https://www.researchgate.net/project/NIST-PSIAP-Representative-Public-Safety-Video-Dataset)
+- [NIST TRECVID Disaster Scene Description and Indexing (DSDI) Task](https://www-nlpir.nist.gov/projects/tv2020/dsdi.html)
 - [Other software developed as part of the PSIAP dataset effort](https://github.com/search?q=topic%3Apsiap+org%3Amit-ll+fork%3Atrue)
+
+## Citation
+If you use this dataset in your research, please cite the following article:
+
+<details> <summary> J. Liu, D. Strohschein, S. Samsi and A. Weinert, "Large Scale Organization and Inference of an Imagery Dataset for Public Safety," 2019 IEEE High Performance Extreme Computing Conference (HPEC), Waltham, MA, USA, 2019, pp. 1-6. doi: 10.1109 HPEC.2019.8916437</summary>
+<p>
+
+```tex
+@inproceedings{liuLargeScale2019,
+author={J. {Liu} and D. {Strohschein} and S. {Samsi} and A. {Weinert}},
+booktitle={2019 IEEE High Performance Extreme Computing Conference (HPEC)},
+title={Large Scale Organization and Inference of an Imagery Dataset for Public Safety},
+year={2019},
+volume={},
+number={},
+pages={1-6},
+keywords={Safety;Metadata;Organizations;Servers;Computer architecture;Program processors;Broadband communication;big data;indexing;inference;public safety;video},
+doi={10.1109/HPEC.2019.8916437},
+ISSN={2377-6943},
+month={Sep.},}
+```
+</p>
+</details>
 
 ## Distribution Statement
 
